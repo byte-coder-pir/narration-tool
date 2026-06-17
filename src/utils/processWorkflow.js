@@ -41,50 +41,81 @@ export const processWorkflow = (wf, csvRows) => {
 
   // ---------- FILTERS ----------
   const getFiltersText = (param) => {
-    const fields = param?.data?.propertyFilters?.fields;
+    const pf = param?.data?.propertyFilters;
+    const fields = pf?.fields;
     if (!fields?.length) return "";
 
-    return fields
-      .map((f, idx) => {
-        const parts = [];
-        let fieldName = f.displayName || f.externalId || f.field || null;
-        let resolved = null;
+    const FIELD_TYPE_LABEL = {
+      PROPERTY: "Property", PARAMETER: "Parameter", VARIABLE: "Variable",
+      RESOURCE: "Resource", RELATION: "Relation",
+    };
 
-        if (typeof fieldName === "string" && fieldName.startsWith("searchable.")) {
-          resolved = propertyNameMap[fieldName.split(".")[1]];
-        } else if (typeof fieldName === "string" && /^[a-f0-9]{24}$/.test(fieldName)) {
-          resolved = propertyNameMap[fieldName];
-        } else if (fieldName && !fieldName.includes(".") && !/^[a-f0-9]{24}$/.test(fieldName)) {
-          resolved = fieldName;
+    const PROPERTY_TYPE_LABEL = {
+      SINGLE_SELECT: "Single Select", MULTI_SELECT: "Multi Select",
+      TEXT: "Text", NUMBER: "Number", DATE: "Date", DATE_TIME: "Date Time",
+      BOOLEAN: "Yes / No", FILE: "File", RELATION: "Relation",
+    };
+
+    const filterLines = fields.map((f, idx) => {
+      const parts = [];
+
+      // Field name — try displayName, then externalId, then resolve from propertyNameMap
+      let resolved = null;
+      const rawField = f.displayName || f.externalId || f.field || null;
+      if (typeof rawField === "string") {
+        if (rawField.startsWith("searchable.")) {
+          resolved = propertyNameMap[rawField.split(".")[1]] || null;
+        } else if (/^[a-f0-9]{24}$/.test(rawField)) {
+          resolved = propertyNameMap[rawField] || null;
+        } else if (!rawField.includes(".")) {
+          resolved = rawField; // plain readable name — use as-is
         }
+      }
+      if (resolved) parts.push(`Field: ${resolved}`);
 
-        const FIELD_TYPE_LABEL = {
-          PROPERTY: "Property", PARAMETER: "Parameter", VARIABLE: "Variable",
-          RESOURCE: "Resource", RELATION: "Relation",
-        };
+      // Field type (Property / Relation / etc.)
+      if (f.fieldType) {
+        const ftLabel = FIELD_TYPE_LABEL[f.fieldType.toUpperCase()] || f.fieldType;
+        parts.push(`Field Type: ${ftLabel}`);
+      }
 
-        if (resolved) parts.push(`Field: ${resolved}`);
-        if (f.fieldType) parts.push(`Field Type: ${FIELD_TYPE_LABEL[f.fieldType?.toUpperCase()] || f.fieldType}`);
-        if (f.op) parts.push(`Condition: ${formatConstraint(f.op)}`);
+      // Property type (Single Select / Number / etc.) when available
+      if (f.propertyType) {
+        const ptLabel = PROPERTY_TYPE_LABEL[f.propertyType.toUpperCase()] || f.propertyType;
+        parts.push(`Property Type: ${ptLabel}`);
+      }
 
-        if (f.values?.length && f.selector?.toUpperCase() !== "PARAMETER") {
-          const resolvedVals = f.values
-            .map((v) =>
-              typeof v === "string" && /^[a-f0-9]{24}$/.test(v)
-                ? optionMap[v] || propertyNameMap[v] || null
-                : v
-            )
-            .filter(Boolean);
-          if (resolvedVals.length) parts.push(`Value: ${resolvedVals.join(", ")}`);
-        }
+      // Condition
+      if (f.op) parts.push(`Condition: ${formatConstraint(f.op)}`);
 
-        if (f.selector?.toUpperCase() === "PARAMETER" && f.referencedParameterId) {
-          parts.push(`Referenced Parameter: ${parameterMap[f.referencedParameterId] || f.referencedParameterId}`);
-        }
+      // Value source
+      const selectorUp = f.selector?.toUpperCase();
+      if (selectorUp === "PARAMETER" && f.referencedParameterId) {
+        const refName = parameterMap[f.referencedParameterId] || f.referencedParameterId;
+        parts.push(`Compared Against: Parameter "${refName}"`);
+      } else if (selectorUp === "PROPERTY" && f.referencedParameterId) {
+        const refName = parameterMap[f.referencedParameterId] || f.referencedParameterId;
+        parts.push(`Compared Against: Property from "${refName}"`);
+      } else if (f.values?.length) {
+        const resolvedVals = f.values
+          .map((v) =>
+            typeof v === "string" && /^[a-f0-9]{24}$/.test(v)
+              ? optionMap[v] || propertyNameMap[v] || null
+              : v
+          )
+          .filter(Boolean);
+        if (resolvedVals.length) parts.push(`Value: ${resolvedVals.join(", ")}`);
+      }
 
-        return `Filter ${idx + 1}:\n  ${parts.join("\n  ")}`;
-      })
-      .join("\n\n");
+      return `Filter ${idx + 1}:\n  ${parts.join("\n  ")}`;
+    });
+
+    // Prepend the combining operator when there are multiple filters
+    const prefix = fields.length > 1 && pf.op
+      ? `Logic: ${pf.op === "AND" ? "All filters must match (AND)" : "Any filter must match (OR)"}\n\n`
+      : "";
+
+    return prefix + filterLines.join("\n\n");
   };
 
   // ---------- VALIDATIONS ----------

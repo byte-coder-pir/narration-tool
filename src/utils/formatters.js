@@ -29,11 +29,27 @@ export const formatConstraint = (constraint) => {
     ENDS_WITH: "ends with",
     IN: "is in",
     NOT_IN: "is not in",
+    ANY: "has any value",
+    ANY_OF: "is any of",
+    ALL_OF: "is all of",
+    NONE_OF: "is none of",
     BETWEEN: "is between",
     IS_NULL: "is empty",
     IS_NOT_NULL: "is not empty",
+    LIKE: "is like",
+    NOT_LIKE: "is not like",
+    EXISTS: "exists",
+    NOT_EXISTS: "does not exist",
   };
-  return map[constraint.toUpperCase()] || formatKey(constraint);
+  const upper = constraint.toUpperCase();
+  if (map[upper]) return map[upper];
+  // Fallback: convert SNAKE_CASE to readable text.
+  // Deliberately avoid formatKey here — it inserts spaces before every capital
+  // letter, which breaks all-caps words like "ANY" into "A N Y".
+  return constraint
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/^\w/, (c) => c.toUpperCase());
 };
 
 export const formatExceptionType = (exceptionType) => {
