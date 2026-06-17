@@ -316,6 +316,18 @@ export const processWorkflow = (wf, csvRows) => {
     })
   );
 
+  // ---------- BUILD PARAM LOCATION MAP ----------
+  // Maps paramId → { stageName, taskName } so that unresolvable resource object IDs
+  // in rule inputs can be inferred from the context of the params they show/hide.
+  const paramLocationMap = {};
+  wf.stageRequests?.forEach((stage) => {
+    stage.taskRequests?.forEach((task) => {
+      task.parameterRequests?.forEach((p) => {
+        paramLocationMap[String(p.id)] = { stageName: stage.name, taskName: task.name };
+      });
+    });
+  });
+
   // ---------- BUILD VISIBILITY MAP ----------
   // Second pass after parameterMap is fully populated so target names can be resolved.
   const allParams = [
@@ -325,12 +337,24 @@ export const processWorkflow = (wf, csvRows) => {
   allParams.forEach((param) => {
     if (!param?.rules?.length) return;
     param.rules.forEach((rule) => {
-      const inputValues = (rule.input || [])
-        .map((inp) => optionMap[inp] || inp)
-        .join(" / ");
-
       const showIds = rule.show?.parameters || [];
       const hideIds = rule.hide?.parameters || [];
+
+      const inputValues = (rule.input || [])
+        .map((inp) => {
+          if (optionMap[inp]) return optionMap[inp];
+          // Unresolved ID (e.g. resource object ID) — infer a readable label from
+          // the stage/task context of the parameters this rule shows or hides.
+          const locations = showIds
+            .map((id) => paramLocationMap[String(id)])
+            .filter(Boolean);
+          if (locations.length) {
+            const uniqueStages = [...new Set(locations.map((l) => l.stageName))];
+            if (uniqueStages.length > 0) return uniqueStages[0];
+          }
+          return inp;
+        })
+        .join(" / ");
 
       // Populate target params (what gets shown/hidden)
       showIds.forEach((targetId) => {

@@ -5,6 +5,7 @@ import { saveAs } from "file-saver";
 import ExcelJS from "exceljs";
 
 import { processWorkflow } from "./utils/processWorkflow.js";
+import { findUnresolvedIds, summariseIssues } from "./utils/validateRows.js";
 import Toast from "./components/Toast.jsx";
 import StatsGrid from "./components/StatsGrid.jsx";
 import DropZone from "./components/DropZone.jsx";
@@ -77,12 +78,31 @@ export default function App() {
     }
   };
 
+  // Guard rail: scan rows for unresolved IDs before any export.
+  // Returns true when it is safe to proceed, false when issues were found
+  // (a warning toast is shown but the caller still decides whether to abort).
+  const runIdGuard = () => {
+    const issues = findUnresolvedIds(rows);
+    const summary = summariseIssues(issues);
+    if (summary) {
+      console.warn("[ID Guard] Unresolved IDs detected before export:", issues);
+      setToast({
+        type: "error",
+        message: `Export blocked — ${summary}. Check the console for details.`,
+      });
+      return false;
+    }
+    return true;
+  };
+
   const downloadCSV = () => {
+    if (!runIdGuard()) return;
     const csv = Papa.unparse(rows, { delimiter: ";" });
     saveAs(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "workflow_extracted.csv");
   };
   const downloadXLSX = async () => {
     if (!rows.length) return;
+    if (!runIdGuard()) return;
 
     const COLUMNS = [
       "Stage Name",
