@@ -41,101 +41,49 @@ export const processWorkflow = (wf, csvRows) => {
 
   // ---------- FILTERS ----------
   const getFiltersText = (param) => {
-    const pf = param?.data?.propertyFilters;
-    const fields = pf?.fields;
+    const fields = param?.data?.propertyFilters?.fields;
     if (!fields?.length) return "";
 
-    const FIELD_TYPE_LABEL = {
-      PROPERTY: "Property", PARAMETER: "Parameter", VARIABLE: "Variable",
-      RESOURCE: "Resource", RELATION: "Relation",
+    const SELECTOR_LABEL = {
+      CONSTANT: "Constant", PARAMETER: "Parameter",
+      PROPERTY: "Property", VARIABLE: "Variable", EXPRESSION: "Expression",
     };
 
-    const PROPERTY_TYPE_LABEL = {
-      SINGLE_SELECT: "Single Select", MULTI_SELECT: "Multi Select",
-      TEXT: "Text", NUMBER: "Number", DATE: "Date", DATE_TIME: "Date Time",
-      BOOLEAN: "Yes / No", FILE: "File", RELATION: "Relation",
-    };
+    return fields
+      .map((f, idx) => {
+        const parts = [];
 
-    const filterLines = fields.map((f, idx) => {
-      const parts = [];
-
-      // Field name — try displayName, then externalId, then resolve from propertyNameMap
-      let resolved = null;
-      const rawField = f.displayName || f.externalId || f.field || null;
-      if (typeof rawField === "string") {
-        if (rawField.startsWith("searchable.")) {
-          resolved = propertyNameMap[rawField.split(".")[1]] || null;
-        } else if (/^[a-f0-9]{24}$/.test(rawField)) {
-          resolved = propertyNameMap[rawField] || null;
-        } else if (!rawField.includes(".")) {
-          resolved = rawField; // plain readable name — use as-is
+        // Filter Type — based on selector (Constant / Parameter / etc.)
+        if (f.selector) {
+          parts.push(`Filter Type: ${SELECTOR_LABEL[f.selector.toUpperCase()] || f.selector}`);
         }
-      }
-      if (resolved) parts.push(`Field: ${resolved}`);
 
-      // Field type (Property / Relation / etc.)
-      if (f.fieldType) {
-        const ftLabel = FIELD_TYPE_LABEL[f.fieldType.toUpperCase()] || f.fieldType;
-        parts.push(`Field Type: ${ftLabel}`);
-      }
+        // Condition
+        if (f.op) parts.push(`Condition: ${formatConstraint(f.op)}`);
 
-      // Property type (Single Select / Number / etc.) when available
-      if (f.propertyType) {
-        const ptLabel = PROPERTY_TYPE_LABEL[f.propertyType.toUpperCase()] || f.propertyType;
-        parts.push(`Property Type: ${ptLabel}`);
-      }
-
-      // Condition
-      if (f.op) parts.push(`Condition: ${formatConstraint(f.op)}`);
-
-      // Value source
-      const selectorUp = f.selector?.toUpperCase();
-      if (selectorUp === "PARAMETER" && f.referencedParameterId) {
-        const refName = parameterMap[f.referencedParameterId] || f.referencedParameterId;
-        parts.push(`Compared Against: Parameter "${refName}"`);
-      } else if (selectorUp === "PROPERTY" && f.referencedParameterId) {
-        const refName = parameterMap[f.referencedParameterId] || f.referencedParameterId;
-        parts.push(`Compared Against: Property from "${refName}"`);
-      } else if (f.values?.length) {
-        const HEX_ID = /^[a-f0-9]{24}$/i;
-        const resolved = [];
-        let unresolvedCount = 0;
-
-        f.values.forEach((v) => {
-          if (typeof v === "string" && HEX_ID.test(v)) {
-            const name = optionMap[v] || propertyNameMap[v];
-            if (name) resolved.push(name);
-            else unresolvedCount++;
-          } else {
-            resolved.push(String(v));
-          }
-        });
-
-        if (resolved.length > 0 && unresolvedCount === 0) {
-          // All values resolved to names
-          parts.push(`Value: ${resolved.join(", ")}`);
-        } else if (resolved.length > 0) {
-          // Partial resolution
-          parts.push(`Value: ${resolved.join(", ")} (+ ${unresolvedCount} more)`);
+        // Property — field name if resolvable, or referenced param name for PARAMETER type
+        const selectorUp = f.selector?.toUpperCase();
+        if (selectorUp === "PARAMETER" && f.referencedParameterId) {
+          const name = parameterMap[f.referencedParameterId];
+          if (name) parts.push(`Property: ${name}`);
         } else {
-          // No names available — show a count so the filter intent is still clear
-          const total = f.values.length;
-          const ptHint = f.propertyType
-            ? (PROPERTY_TYPE_LABEL[f.propertyType.toUpperCase()] || f.propertyType) + " "
-            : "";
-          parts.push(`Value: [${total} selected ${ptHint}option${total > 1 ? "s" : ""}]`);
+          const rawField = f.displayName || f.externalId || f.field || null;
+          let fieldName = null;
+          if (typeof rawField === "string") {
+            if (rawField.startsWith("searchable.")) {
+              fieldName = propertyNameMap[rawField.split(".")[1]] || null;
+            } else if (/^[a-f0-9]{24}$/.test(rawField)) {
+              fieldName = propertyNameMap[rawField] || null;
+            } else if (!rawField.includes(".")) {
+              fieldName = rawField;
+            }
+          }
+          if (fieldName) parts.push(`Property: ${fieldName}`);
         }
-      }
 
-      return `Filter ${idx + 1}:\n  ${parts.join("\n  ")}`;
-    });
-
-    // Prepend the combining operator when there are multiple filters
-    const prefix = fields.length > 1 && pf.op
-      ? `Logic: ${pf.op === "AND" ? "All filters must match (AND)" : "Any filter must match (OR)"}\n\n`
-      : "";
-
-    return prefix + filterLines.join("\n\n");
+        return `Filter ${idx + 1}:\n  ${parts.join("\n  ")}`;
+      })
+      .join("\n\n");
   };
 
   // ---------- VALIDATIONS ----------
