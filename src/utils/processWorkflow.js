@@ -52,33 +52,31 @@ export const processWorkflow = (wf, csvRows) => {
     return fields
       .map((f, idx) => {
         const parts = [];
+        const HEX_ID = /^[a-f0-9]{24}$/i;
+        const selectorUp = f.selector?.toUpperCase();
 
-        // Filter Type — based on selector (Constant / Parameter / etc.)
+        // Filter Type
         if (f.selector) {
-          parts.push(`Filter Type: ${SELECTOR_LABEL[f.selector.toUpperCase()] || f.selector}`);
+          parts.push(`Filter Type: ${SELECTOR_LABEL[selectorUp] || f.selector}`);
         }
 
-        // Condition
-        if (f.op) parts.push(`Condition: ${formatConstraint(f.op)}`);
-
-        // Property — field name if resolvable, or referenced param name for PARAMETER type
-        const selectorUp = f.selector?.toUpperCase();
+        // Source — "Ontology" for unresolvable backend IDs, param name for form references
         if (selectorUp === "PARAMETER" && f.referencedParameterId) {
           const name = parameterMap[f.referencedParameterId];
-          if (name) parts.push(`Property: ${name}`);
-        } else {
-          const rawField = f.displayName || f.externalId || f.field || null;
-          let fieldName = null;
-          if (typeof rawField === "string") {
-            if (rawField.startsWith("searchable.")) {
-              fieldName = propertyNameMap[rawField.split(".")[1]] || null;
-            } else if (/^[a-f0-9]{24}$/.test(rawField)) {
-              fieldName = propertyNameMap[rawField] || null;
-            } else if (!rawField.includes(".")) {
-              fieldName = rawField;
-            }
+          if (name) parts.push(`Source: ${name}`);
+        } else if (f.values?.length) {
+          const allResolved = f.values.every((v) =>
+            !(typeof v === "string" && HEX_ID.test(v)) ||
+            optionMap[v] || propertyNameMap[v]
+          );
+          if (allResolved) {
+            const names = f.values
+              .map((v) => (typeof v === "string" && HEX_ID.test(v) ? optionMap[v] || propertyNameMap[v] : v))
+              .filter(Boolean);
+            if (names.length) parts.push(`Source: ${names.join(", ")}`);
+          } else {
+            parts.push(`Source: Ontology`);
           }
-          if (fieldName) parts.push(`Property: ${fieldName}`);
         }
 
         return `Filter ${idx + 1}:\n  ${parts.join("\n  ")}`;
