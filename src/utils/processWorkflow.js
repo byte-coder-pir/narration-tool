@@ -62,8 +62,7 @@ export const processWorkflow = (wf, csvRows) => {
 
         // Source — "Ontology" for unresolvable backend IDs, param name for form references
         if (selectorUp === "PARAMETER" && f.referencedParameterId) {
-          const name = parameterMap[f.referencedParameterId];
-          if (name) parts.push(`Source: ${name}`);
+          if (parameterMap[f.referencedParameterId]) parts.push(`Source: Form Parameter`);
         } else if (f.values?.length) {
           const allResolved = f.values.every((v) =>
             !(typeof v === "string" && HEX_ID.test(v)) ||
