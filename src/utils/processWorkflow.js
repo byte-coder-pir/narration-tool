@@ -97,14 +97,34 @@ export const processWorkflow = (wf, csvRows) => {
         const refName = parameterMap[f.referencedParameterId] || f.referencedParameterId;
         parts.push(`Compared Against: Property from "${refName}"`);
       } else if (f.values?.length) {
-        const resolvedVals = f.values
-          .map((v) =>
-            typeof v === "string" && /^[a-f0-9]{24}$/.test(v)
-              ? optionMap[v] || propertyNameMap[v] || null
-              : v
-          )
-          .filter(Boolean);
-        if (resolvedVals.length) parts.push(`Value: ${resolvedVals.join(", ")}`);
+        const HEX_ID = /^[a-f0-9]{24}$/i;
+        const resolved = [];
+        let unresolvedCount = 0;
+
+        f.values.forEach((v) => {
+          if (typeof v === "string" && HEX_ID.test(v)) {
+            const name = optionMap[v] || propertyNameMap[v];
+            if (name) resolved.push(name);
+            else unresolvedCount++;
+          } else {
+            resolved.push(String(v));
+          }
+        });
+
+        if (resolved.length > 0 && unresolvedCount === 0) {
+          // All values resolved to names
+          parts.push(`Value: ${resolved.join(", ")}`);
+        } else if (resolved.length > 0) {
+          // Partial resolution
+          parts.push(`Value: ${resolved.join(", ")} (+ ${unresolvedCount} more)`);
+        } else {
+          // No names available — show a count so the filter intent is still clear
+          const total = f.values.length;
+          const ptHint = f.propertyType
+            ? (PROPERTY_TYPE_LABEL[f.propertyType.toUpperCase()] || f.propertyType) + " "
+            : "";
+          parts.push(`Value: [${total} selected ${ptHint}option${total > 1 ? "s" : ""}]`);
+        }
       }
 
       return `Filter ${idx + 1}:\n  ${parts.join("\n  ")}`;
